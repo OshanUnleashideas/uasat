@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model bills {
+  id             Int                   @id @default(autoincrement())
+  quotation_id   Int?
+  bill_no        String?               @unique(map: "bill_no") @db.VarChar(50)
+  bill_date      DateTime?             @default(dbgenerated("(curdate())")) @db.Date
+  subtotal       Decimal?              @db.Decimal(10, 2)
+  vat            Decimal?              @default(0.00) @db.Decimal(10, 2)
+  service_charge Decimal?              @default(0.00) @db.Decimal(10, 2)
+  total_amount   Decimal?              @db.Decimal(10, 2)
+  payment_status bills_payment_status? @default(Unpaid)
+  quotations     quotations?           @relation(fields: [quotation_id], references: [id], onUpdate: NoAction, map: "bills_ibfk_1")
+  income         income[]
+
+  @@index([quotation_id], map: "quotation_id")
+}
+
+model customers {
+  id         Int          @id @default(autoincrement())
+  name       String       @db.VarChar(100)
+  phone      String?      @db.VarChar(20)
+  email      String?      @db.VarChar(100) @unique
+  address    String?      @db.Text
+  created_at DateTime?    @default(now()) @db.Timestamp(0)
+  quotations quotations[]
+  vehicles   vehicles[]
+}
+
+model expenses {
+  id          Int       @id @default(autoincrement())
+  category    String?   @db.VarChar(100)
+  description String?   @db.Text
+  amount      Decimal   @db.Decimal(10, 2)
+  date        DateTime? @default(dbgenerated("(curdate())")) @db.Date
+}
+
+model income {
+  id          Int       @id @default(autoincrement())
+  bill_id     Int?
+  description String?   @db.VarChar(255)
+  amount      Decimal   @db.Decimal(10, 2)
+  date        DateTime? @default(dbgenerated("(curdate())")) @db.Date
+  bills       bills?    @relation(fields: [bill_id], references: [id], onUpdate: NoAction, map: "income_ibfk_1")
+
+  @@index([bill_id], map: "bill_id")
+}
+
+model job_images {
+  id         Int              @id @default(autoincrement())
+  job_id     Int?
+  image_path String?          @db.VarChar(255)
+  type       job_images_type? @default(Before)
+  jobs       jobs?            @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "job_images_ibfk_1")
+
+  @@index([job_id], map: "job_id")
+}
+
+model jobs {
+  id           Int          @id @default(autoincrement())
+  quotation_id Int?
+  technician   String?      @db.VarChar(100)
+  status       jobs_status? @default(Pending)
+  start_date   DateTime?    @db.Date
+  end_date     DateTime?    @db.Date
+  remarks      String?      @db.Text
+  job_images   job_images[]
+  quotations   quotations?  @relation(fields: [quotation_id], references: [id], onUpdate: NoAction, map: "jobs_ibfk_1")
+
+  @@index([quotation_id], map: "quotation_id")
+}
+
+model quotations {
+  id             Int                  @id @default(autoincrement())
+  customer_id    Int?
+  vehicle_id     Int?
+  job_type       quotations_job_type? @default(Normal_Painting)
+  parts_cost     Decimal?             @default(0.00) @db.Decimal(10, 2)
+  paint_cost     Decimal?             @default(0.00) @db.Decimal(10, 2)
+  labor_cost     Decimal?             @default(0.00) @db.Decimal(10, 2)
+  service_charge Decimal?             @default(0.00) @db.Decimal(10, 2)
+  total_estimate Decimal?             @db.Decimal(10, 2)
+  status         quotations_status?   @default(Pending)
+  created_at     DateTime?            @default(now()) @db.Timestamp(0)
+  bills          bills[]
+  jobs           jobs[]
+  customers      customers?           @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "quotations_ibfk_1")
+  vehicles       vehicles?            @relation(fields: [vehicle_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "quotations_ibfk_2")
+
+  @@index([customer_id], map: "customer_id")
+  @@index([vehicle_id], map: "vehicle_id")
+}
+
+model users {
+  id         Int         @id @default(autoincrement())
+  name       String      @db.VarChar(100)
+  email      String      @unique(map: "email") @db.VarChar(100)
+  password   String      @db.VarChar(255)
+  role       users_role? @default(Staff)
+  created_at DateTime?   @default(now()) @db.Timestamp(0)
+}
+
+model vehicles {
+  id          Int            @id @default(autoincrement())
+  customer_id Int?
+  vehicle_no  String         @db.VarChar(20)
+  brand       String?        @db.VarChar(50)
+  model       String?        @db.VarChar(50)
+  color       String?        @db.VarChar(30)
+  year        Int?           @db.Year
+  type        vehicles_type? @default(Car)
+  quotations  quotations[]
+  customers   customers?     @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "vehicles_ibfk_1")
+
+  @@index([customer_id], map: "customer_id")
+}
+
+enum job_images_type {
+  Before
+  After
+}
+
+enum jobs_status {
+  Pending
+  In_Progress @map("In Progress")
+  Completed
+}
+
+enum quotations_job_type {
+  Accident_Repair @map("Accident Repair")
+  Normal_Painting @map("Normal Painting")
+  Custom_Work     @map("Custom Work")
+}
+
+enum users_role {
+  Admin
+  Staff
+}
+
+enum vehicles_type {
+  Car
+  Van
+  Truck
+  Bike
+  Other
+}
+
+enum bills_payment_status {
+  Paid
+  Unpaid
+  Pending
+}
+
+enum quotations_status {
+  Pending
+  Approved
+  Rejected
+}

@@ -133,7 +133,7 @@ export default function VehiclesPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="registrationNumber">Registration Number *</Label>
+                    {/* <Label htmlFor="registrationNumber">Registration Number *</Label> */}
                     <Input
                       id="registrationNumber"
                       value={formData.registrationNumber}

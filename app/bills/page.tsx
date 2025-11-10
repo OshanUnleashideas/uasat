@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { useStore, type QuotationItem } from "@/lib/store"
 import { Plus, Search, Eye, Pencil, Trash2, Receipt } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import {
@@ -23,8 +23,20 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 
+type Bill = {
+  id: string;
+  bill_no: string;
+  customerId: string;
+  vehicleId: string;
+  paid_amount: number;
+  balance_amount: number;
+  total_amount: number;
+  payment_status: string;
+};
+
 export default function BillsPage() {
-  const { bills, customers, vehicles, deleteBill, addBill, addTransaction, quotations } = useStore()
+  const [bills, setBills] = useState<Bill[]>([]);
+  const { customers, vehicles, deleteBill, addBill, addTransaction, quotations } = useStore()
   const [searchQuery, setSearchQuery] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
@@ -40,13 +52,28 @@ export default function BillsPage() {
     { id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 },
   ])
 
-  const filteredBills = bills.filter(
-    (bill) =>
-      bill.billNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customers
-        .find((c) => c.id === bill.customerId)
-        ?.name.toLowerCase()
-        .includes(searchQuery.toLowerCase()),
+  useEffect(() => {
+    fetchBills();
+  }, []);
+
+  const fetchBills = async () => {
+    const res = await fetch("api/bills");
+    if (!res.ok) {
+      console.error("Failed to fetch bills");
+      return;
+    }
+    const data = await res.json();
+    console.log("Fetched bills:", data);
+    setBills(data);
+  }
+
+  const filteredBills = bills.filter((bill) => {
+    const bNumMatch = bill.bill_no.toLowerCase().includes(searchQuery.toLowerCase());
+    const customer = customers.find((c) => String(c.id) === String(bill.customerId));
+    const customerName = customer?.name ?? "";
+    const custMatch = customerName.toLowerCase().includes(searchQuery.toLowerCase());
+    return bNumMatch || custMatch;
+  }
   )
 
   const handleDelete = (id: string) => {
@@ -80,15 +107,15 @@ export default function BillsPage() {
   const customerVehicles = vehicles.filter((v) => v.customerId === customerId)
   const acceptedQuotations = quotations.filter((q) => q.customerId === customerId && q.status === "accepted")
 
-  const loadFromQuotation = (qId: string) => {
-    const quotation = quotations.find((q) => q.id === qId)
-    if (quotation) {
-      setVehicleId(quotation.vehicleId)
-      setItems(quotation.items)
-      setTaxRate(quotation.subtotal > 0 ? (quotation.tax / quotation.subtotal) * 100 : 0)
-      setJobType(quotation.jobType)
-    }
-  }
+  // const loadFromQuotation = (qId: string) => {
+  //   const quotation = quotations.find((q) => q.id === qId)
+  //   if (quotation) {
+  //     setVehicleId(quotation.vehicleId)
+  //     setItems(quotation.items)
+  //     setTaxRate(quotation.subtotal > 0 ? (quotation.tax / quotation.subtotal) * 100 : 0)
+  //     setJobType(quotation.jobType)
+  //   }
+  // }
 
   const addItem = () => {
     setItems([...items, { id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }])
@@ -146,7 +173,7 @@ export default function BillsPage() {
       dueDate,
     }
 
-    addBill(newBill);
+    // addBill(newBill);
 
     // Add income transaction if payment received
     if (paid > 0) {
@@ -219,7 +246,7 @@ export default function BillsPage() {
                         value={quotationId}
                         onValueChange={(value) => {
                           setQuotationId(value)
-                          loadFromQuotation(value)
+                          // loadFromQuotation(value)
                         }}
                         disabled={!customerId}
                       >
@@ -447,8 +474,8 @@ export default function BillsPage() {
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <CardTitle className="flex items-center gap-2">
-                        {bill.billNumber}
-                        <Badge variant={getStatusColor(bill.status)}>{bill.status}</Badge>
+                        {bill.bill_no}
+                        <Badge variant={getStatusColor(bill.payment_status)}>{bill.payment_status}</Badge>
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">{getCustomerName(bill.customerId)}</p>
                     </div>
@@ -477,15 +504,15 @@ export default function BillsPage() {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Total Amount</p>
-                      <p className="text-sm font-medium">Rs. {bill.total.toLocaleString()}</p>
+                      <p className="text-sm font-medium">Rs. {bill.total_amount.toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Paid</p>
-                      <p className="text-sm font-medium text-green-600">Rs. {bill.paid.toLocaleString()}</p>
+                      <p className="text-sm font-medium text-green-600">Rs. {bill.paid_amount.toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Balance</p>
-                      <p className="text-sm font-medium text-orange-600">Rs. {bill.balance.toLocaleString()}</p>
+                      <p className="text-sm font-medium text-orange-600">Rs. {bill.balance_amount.toLocaleString()}</p>
                     </div>
                   </div>
                 </CardContent>

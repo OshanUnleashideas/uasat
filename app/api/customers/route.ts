@@ -24,6 +24,7 @@ export async function POST(req: Request) {
     const data = await req.json();
     const { name, phone, email } = data;
 
+    // Validation
     if (!name || !phone) {
       return NextResponse.json(
         { error: "Name and phone number are required" },
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
+    // Validation
 
     const newCustomer = await prisma.customers.create({
       data: {

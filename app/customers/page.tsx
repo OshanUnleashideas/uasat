@@ -113,7 +113,7 @@ export default function CustomersPage() {
       }
 
     } catch (error) {
-      console.error("Error:", error);
+      // console.error("Error:", error);
       toast.error("Something went wrong!");
     }
   };

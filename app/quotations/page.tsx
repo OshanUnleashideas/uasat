@@ -1,125 +1,258 @@
-"use client"
+"use client";
 
-import type React from "react"
+import React, { useEffect, useState } from "react";
+import { AppLayout } from "@/components/app-layout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Search, Eye, Pencil, Trash2, FileText, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { toast } from "react-toastify";
 
-import { AppLayout } from "@/components/app-layout"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useStore, type QuotationItem } from "@/lib/store"
-import { Plus, Search, Eye, Pencil, Trash2, FileText, X } from "lucide-react"
-import { useState } from "react"
-import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
+type Vehicle = {
+  id: number;
+  vehicle_no: string;
+  customer_id?: number | null;
+  brand?: string | null;
+  model?: string | null;
+  color?: string | null;
+  year?: number | null;
+};
+
+type Customer = {
+  id: number;
+  name: string;
+};
+
+type Quotation = {
+  id: string;
+  quotationNumber: string;
+  customerId: string;
+  vehicleId: string;
+  total: number;
+  status: string;
+  createdAt?: string | Date | null;
+};
+
+type QuotationItem = {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+};
 
 export default function QuotationsPage() {
-  const { quotations, customers, vehicles, deleteQuotation, addQuotation } = useStore()
-  const [searchQuery, setSearchQuery] = useState("")
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const [customerId, setCustomerId] = useState("")
-  const [vehicleId, setVehicleId] = useState("")
-  const [validUntil, setValidUntil] = useState("")
-  const [taxRate, setTaxRate] = useState(0)
-  const [jobType, setJobType] = useState<"accident-repair" | "normal-painting" | "custom">("normal-painting")
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
+
+  const [customerId, setCustomerId] = useState<string>("");
+  const [vehicleId, setVehicleId] = useState<string>("");
+  const [validUntil, setValidUntil] = useState<string>("");
+  const [taxRate, setTaxRate] = useState<number>(0);
+  const [jobType, setJobType] = useState<"Accident Repair" | "Normal Painting" | "Custom Work">(
+    "Normal Painting",
+  );
+
   const [items, setItems] = useState<QuotationItem[]>([
     { id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 },
-  ])
+  ]);
 
-  const filteredQuotations = quotations.filter(
-    (quotation) =>
-      quotation.quotationNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customers
-        .find((c) => c.id === quotation.customerId)
-        ?.name.toLowerCase()
-        .includes(searchQuery.toLowerCase()),
-  )
+  useEffect(() => {
+    fetchCustomers();
+    fetchVehicles();
+    fetchQuotations();
+  }, []);
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this quotation?")) {
-      deleteQuotation(id)
+  const fetchCustomers = async () => {
+    const res = await fetch("/api/customers");
+    if (!res.ok) return;
+    const data = await res.json();
+    setCustomers(data);
+  };
+
+  const fetchVehicles = async () => {
+    const res = await fetch("/api/vehicles");
+    if (!res.ok) return;
+    const data = await res.json();
+    setVehicles(data);
+  };
+
+  const fetchQuotations = async () => {
+    const res = await fetch("/api/quotations");
+    if (!res.ok) return;
+    const data = await res.json();
+    setQuotations(data);
+  };
+
+  // Serach Quo
+  const filteredQuotations = quotations.filter((quotation) => {
+    const qNumMatch = quotation.quotationNumber.toLowerCase().includes(searchQuery.toLowerCase());
+    const customer = customers.find((c) => String(c.id) === String(quotation.customerId));
+    const customerName = customer?.name ?? "";
+    const custMatch = customerName.toLowerCase().includes(searchQuery.toLowerCase());
+    return qNumMatch || custMatch;
+  });
+  // Serach Quo
+
+  // Delete quo
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this quotation?")) return;
+    const res = await fetch(`/api/quotations?id=${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setQuotations((prev) => prev.filter((q) => q.id !== id));
+    } else {
+      alert("Failed to delete quotation");
     }
-  }
+  };
+  // Delete quo
 
   const getCustomerName = (customerId: string) => {
-    return customers.find((c) => c.id === customerId)?.name || "Unknown"
-  }
+    return customers.find((c) => String(c.id) === String(customerId))?.name || "Unknown";
+  };
 
   const getVehicleInfo = (vehicleId: string) => {
-    const vehicle = vehicles.find((v) => v.id === vehicleId)
-    return vehicle ? `${vehicle.registrationNumber} - ${vehicle.make} ${vehicle.model}` : "Unknown"
-  }
+    const vehicle = vehicles.find((v) => String(v.id) === String(vehicleId));
+    return vehicle ? `${vehicle.vehicle_no} - ${vehicle.brand ?? ""} ${vehicle.model ?? ""}` : "Unknown";
+  };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "draft":
-        return "secondary"
-      case "sent":
-        return "default"
-      case "accepted":
-        return "default"
-      case "rejected":
-        return "destructive"
+    switch (String(status)) {
+      case "Pending":
+        return "bg-secondary text-secondary-foreground";
+      case "Approved":
+        return "bg-primary text-primary-foreground";
+      case "Rejected":
+        return "bg-destructive text-destructive-foreground";
+      case "Billed":
+        return "bg-green-600 text-white hover:bg-green-700";
       default:
-        return "secondary"
+        return "bg-secondary text-secondary-foreground";
     }
-  }
+  };
 
-  const customerVehicles = vehicles.filter((v) => v.customerId === customerId)
+  const customerVehicles = vehicles.filter((v) => String(v.customer_id) === String(customerId));
 
   const addItem = () => {
-    setItems([...items, { id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }])
-  }
+    setItems((s) => [...s, { id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }]);
+  };
 
   const removeItem = (id: string) => {
-    if (items.length > 1) {
-      setItems(items.filter((item) => item.id !== id))
-    }
-  }
+    if (items.length <= 1) return;
+    setItems((s) => s.filter((it) => it.id !== id));
+  };
 
   const updateItem = (id: string, field: keyof QuotationItem, value: string | number) => {
-    setItems(
-      items.map((item) => {
-        if (item.id === id) {
-          const updated = { ...item, [field]: value }
-          if (field === "quantity" || field === "unitPrice") {
-            updated.total = updated.quantity * updated.unitPrice
-          }
-          return updated
-        }
-        return item
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: value } as QuotationItem;
+        const qty = Number(updated.quantity) || 0;
+        const unit = Number(updated.unitPrice) || 0;
+        updated.total = Math.round((qty * unit + Number.EPSILON) * 100) / 100;
+        return updated;
       }),
-    )
-  }
+    );
+  };
 
-  const subtotal = items.reduce((sum, item) => sum + item.total, 0)
-  const tax = subtotal * (taxRate / 100)
-  const total = subtotal + tax
+  const subtotal = items.reduce((s, it) => s + Number(it.total || 0), 0);
+  const tax = Math.round((subtotal * (taxRate / 100) + Number.EPSILON) * 100) / 100;
+  const total = Math.round((subtotal + tax + Number.EPSILON) * 100) / 100;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    addQuotation({
-      customerId,
-      vehicleId,
-      items,
-      subtotal,
-      tax,
-      total,
-      status: "draft",
-      validUntil,
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Basic field validation
+    if (!customerId) {
+      toast.error("Please select a customer");
+      return;
+    }
+
+    if (!vehicleId) {
+      toast.error("Please select a vehicle");
+      return;
+    }
+
+    // Validate each item
+    for (const item of items) {
+      if (!item.description.trim()) {
+        toast.error("Each item must have a description");
+        return;
+      }
+      if (item.quantity <= 0) {
+        toast.error("Quantity must be greater than 0");
+        return;
+      }
+      if (item.unitPrice < 0) {
+        toast.error("Unit price cannot be negative");
+        return;
+      }
+    }
+
+    if (taxRate < 0) {
+      toast.error("Tax rate cannot be negative");
+      return;
+    }
+
+    // Optional: date validation (cannot select past date)
+    if (validUntil && new Date(validUntil) < new Date()) {
+      toast.error("Valid until date cannot be in the past");
+      return;
+    }
+
+    const body = {
+      customerId: customerId || null,
+      vehicleId: vehicleId || null,
+      items: items.map((it) => ({
+        description: it.description,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        total: it.total,
+      })),
       jobType,
-    })
-    // Reset form
-    setCustomerId("")
-    setVehicleId("")
-    setValidUntil("")
-    setTaxRate(0)
-    setJobType("normal-painting")
-    setItems([{ id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }])
-    setIsModalOpen(false)
-  }
+      validUntil: validUntil || null,
+      taxRate,
+      status: "Pending",
+    };
+
+    const res = await fetch("/api/quotations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      toast.error("Failed to create quotation")
+      return;
+    } else {
+      toast.success("Quotation create successfully")
+    }
+
+    const created = await res.json();
+    setQuotations((prev) => [created, ...prev]);
+
+    // reset form
+    setCustomerId("");
+    setVehicleId("");
+    setValidUntil("");
+    setTaxRate(0);
+    setJobType("Normal Painting");
+    setItems([{ id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }]);
+    setIsModalOpen(false);
+  };
 
   return (
     <AppLayout>
@@ -152,9 +285,7 @@ export default function QuotationsPage() {
             <CardContent className="flex flex-col items-center justify-center py-12">
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">
-                {searchQuery
-                  ? "No quotations found matching your search"
-                  : "No quotations yet. Create your first quotation to get started."}
+                {searchQuery ? "No quotations found matching your search" : "No quotations yet. Create your first quotation to get started."}
               </p>
             </CardContent>
           </Card>
@@ -167,7 +298,9 @@ export default function QuotationsPage() {
                     <div className="space-y-1">
                       <CardTitle className="flex items-center gap-2">
                         {quotation.quotationNumber}
-                        <Badge variant={getStatusColor(quotation.status)}>{quotation.status}</Badge>
+                        <Badge className={getStatusColor(quotation.status)}>
+                          {quotation.status}
+                        </Badge>
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">{getCustomerName(quotation.customerId)}</p>
                     </div>
@@ -196,11 +329,11 @@ export default function QuotationsPage() {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Total Amount</p>
-                      <p className="text-sm font-medium">Rs. {quotation.total.toLocaleString()}</p>
+                      <p className="text-sm font-medium">Rs. {Number(quotation.total).toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Valid Until</p>
-                      <p className="text-sm font-medium">{new Date(quotation.validUntil).toLocaleDateString()}</p>
+                      <p className="text-sm text-muted-foreground">Created</p>
+                      <p className="text-sm font-medium">{quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString() : "-"}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -233,7 +366,7 @@ export default function QuotationsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {customers.map((customer) => (
-                            <SelectItem key={customer.id} value={customer.id}>
+                            <SelectItem key={customer.id} value={String(customer.id)}>
                               {customer.name}
                             </SelectItem>
                           ))}
@@ -248,8 +381,8 @@ export default function QuotationsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {customerVehicles.map((vehicle) => (
-                            <SelectItem key={vehicle.id} value={vehicle.id}>
-                              {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
+                            <SelectItem key={vehicle.id} value={String(vehicle.id)}>
+                              {vehicle.vehicle_no} - {vehicle.brand} {vehicle.model}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -259,37 +392,24 @@ export default function QuotationsPage() {
                   <div className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-2">
                       <Label htmlFor="jobType">Job Type *</Label>
-                      <Select value={jobType} onValueChange={(value: any) => setJobType(value)} required>
+                      <Select value={jobType} onValueChange={(v: any) => setJobType(v)} required>
                         <SelectTrigger>
                           <SelectValue placeholder="Select job type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="accident-repair">Accident Repair</SelectItem>
-                          <SelectItem value="normal-painting">Normal Painting</SelectItem>
-                          <SelectItem value="custom">Custom</SelectItem>
+                          <SelectItem value="Accident Repair">Accident Repair</SelectItem>
+                          <SelectItem value="Normal Painting">Normal Painting</SelectItem>
+                          <SelectItem value="Custom Work">Custom</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="validUntil">Valid Until *</Label>
-                      <Input
-                        id="validUntil"
-                        type="date"
-                        value={validUntil}
-                        onChange={(e) => setValidUntil(e.target.value)}
-                        required
-                      />
+                      <Label htmlFor="validUntil">Valid Until</Label>
+                      <Input id="validUntil" type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="taxRate">Tax Rate (%)</Label>
-                      <Input
-                        id="taxRate"
-                        type="number"
-                        value={taxRate}
-                        onChange={(e) => setTaxRate(Number.parseFloat(e.target.value) || 0)}
-                        min="0"
-                        step="0.01"
-                      />
+                      <Input id="taxRate" type="number" value={taxRate} onChange={(e) => setTaxRate(Number.parseFloat(e.target.value) || 0)} min="0" step="0.01" />
                     </div>
                   </div>
                 </div>
@@ -308,34 +428,15 @@ export default function QuotationsPage() {
                         <div className="flex-1 grid gap-4 md:grid-cols-4">
                           <div className="md:col-span-2 space-y-2">
                             <Label>Description *</Label>
-                            <Input
-                              value={item.description}
-                              onChange={(e) => updateItem(item.id, "description", e.target.value)}
-                              placeholder="Service or part description"
-                              required
-                            />
+                            <Input value={item.description} onChange={(e) => updateItem(item.id, "description", e.target.value)} placeholder="Service or part description" required />
                           </div>
                           <div className="space-y-2">
                             <Label>Quantity *</Label>
-                            <Input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => updateItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)}
-                              min="0"
-                              step="0.01"
-                              required
-                            />
+                            <Input type="number" value={item.quantity} onChange={(e) => updateItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)} min="0" step="0.01" required />
                           </div>
                           <div className="space-y-2">
                             <Label>Unit Price (Rs.) *</Label>
-                            <Input
-                              type="number"
-                              value={item.unitPrice}
-                              onChange={(e) => updateItem(item.id, "unitPrice", Number.parseFloat(e.target.value) || 0)}
-                              min="0"
-                              step="0.01"
-                              required
-                            />
+                            <Input type="number" value={item.unitPrice} onChange={(e) => updateItem(item.id, "unitPrice", Number.parseFloat(e.target.value) || 0)} min="0" step="0.01" required />
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 pt-8">
@@ -378,5 +479,5 @@ export default function QuotationsPage() {
         </div>
       )}
     </AppLayout>
-  )
+  );
 }

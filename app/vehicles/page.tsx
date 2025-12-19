@@ -1,14 +1,11 @@
 "use client"
 
-import type React from "react"
-
 import { AppLayout } from "@/components/app-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { useStore } from "@/lib/store"
+import { useEffect, useState } from "react"
 import { Plus, Search, Pencil, Trash2, Car } from "lucide-react"
-import { useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -21,44 +18,107 @@ import {
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "react-toastify"
+
+interface Vehicle {
+  id: number
+  customer_id: number
+  vehicle_no: string
+  brand: string
+  model: string
+  year: number
+  color: string
+}
+
+interface Customer {
+  id: number
+  name: string
+}
 
 export default function VehiclesPage() {
-  const { vehicles, customers, addVehicle, updateVehicle, deleteVehicle } = useStore()
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingVehicle, setEditingVehicle] = useState<string | null>(null)
+  const [editingVehicle, setEditingVehicle] = useState<number | null>(null)
   const [formData, setFormData] = useState({
-    customerId: "",
-    registrationNumber: "",
-    make: "",
+    customer_id: 0,
+    vehicle_no: "",
+    brand: "",
     model: "",
     year: new Date().getFullYear(),
     color: "",
   })
 
-  const filteredVehicles = vehicles.filter(
-    (vehicle) =>
-      vehicle.registrationNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vehicle.make.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vehicle.model.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  // Fetch vehicles
+  const fetchVehicles = async () => {
+    const res = await fetch("/api/vehicles")
+    const data = await res.json()
+    setVehicles(data)
+  }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Fetch customers
+  const fetchCustomers = async () => {
+    const res = await fetch("/api/customers")
+    const data = await res.json()
+    setCustomers(data)
+  }
+
+  useEffect(() => {
+    fetchVehicles()
+    fetchCustomers()
+  }, [])
+
+  // Add / Update Vehicle
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (editingVehicle) {
-      updateVehicle(editingVehicle, formData)
-    } else {
-      addVehicle(formData)
+
+    try {
+      const method = editingVehicle ? "PUT" : "POST"
+      const res = await fetch("/api/vehicles", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingVehicle ? { ...formData, id: editingVehicle } : formData),
+      })
+      const data = await res.json()
+
+      if (!res.ok) throw new Error(data.error || "Failed to save vehicle")
+
+      toast.success(editingVehicle ? "Vehicle updated!" : "Vehicle added!")
+      setIsDialogOpen(false)
+      resetForm()
+      fetchVehicles()
+    } catch (err: any) {
+      toast.error(err.message)
     }
-    setIsDialogOpen(false)
-    resetForm()
+  }
+
+  // Delete Vehicle
+  const handleDelete = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this vehicle?")) return
+    try {
+      const res = await fetch("/api/vehicles", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      if (res.ok) {
+        toast.success("Vehicle deleted!")
+        fetchVehicles()
+      } else {
+        const data = await res.json()
+        toast.error(data.error || "Failed to delete")
+      }
+    } catch {
+      toast.error("Error deleting vehicle")
+    }
   }
 
   const resetForm = () => {
     setFormData({
-      customerId: "",
-      registrationNumber: "",
-      make: "",
+      customer_id: 0,
+      vehicle_no: "",
+      brand: "",
       model: "",
       year: new Date().getFullYear(),
       color: "",
@@ -66,124 +126,115 @@ export default function VehiclesPage() {
     setEditingVehicle(null)
   }
 
-  const handleEdit = (vehicle: (typeof vehicles)[0]) => {
+  const handleEdit = (v: Vehicle) => {
     setFormData({
-      customerId: vehicle.customerId,
-      registrationNumber: vehicle.registrationNumber,
-      make: vehicle.make,
-      model: vehicle.model,
-      year: vehicle.year,
-      color: vehicle.color,
+      customer_id: v.customer_id,
+      vehicle_no: v.vehicle_no,
+      brand: v.brand,
+      model: v.model,
+      year: v.year,
+      color: v.color,
     })
-    setEditingVehicle(vehicle.id)
+    setEditingVehicle(v.id)
     setIsDialogOpen(true)
   }
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this vehicle?")) {
-      deleteVehicle(id)
-    }
-  }
+  const filteredVehicles = vehicles.filter(
+    (v) =>
+      v.vehicle_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.model.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
-  const getCustomerName = (customerId: string) => {
-    return customers.find((c) => c.id === customerId)?.name || "Unknown"
-  }
+  const getCustomerName = (id: number) =>
+    customers.find((c) => c.id === id)?.name || "Unknown"
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Vehicles</h1>
+            <h1 className="text-3xl font-bold">Vehicles</h1>
             <p className="text-muted-foreground">Manage vehicle records</p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={resetForm}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Vehicle
+                <Plus className="mr-2 h-4 w-4" /> Add Vehicle
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{editingVehicle ? "Edit Vehicle" : "Add New Vehicle"}</DialogTitle>
                 <DialogDescription>
-                  {editingVehicle ? "Update vehicle information" : "Enter vehicle details to add it to the system"}
+                  {editingVehicle ? "Update vehicle information" : "Enter new vehicle details"}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit}>
                 <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="customerId">Customer *</Label>
+                  <div>
+                    <Label>Customer *</Label>
                     <Select
-                      value={formData.customerId}
-                      onValueChange={(value) => setFormData({ ...formData, customerId: value })}
-                      required
+                      value={formData.customer_id ? formData.customer_id.toString() : ""}
+                      onValueChange={(v) => setFormData({ ...formData, customer_id: parseInt(v) })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select customer" />
                       </SelectTrigger>
                       <SelectContent>
-                        {customers.map((customer) => (
-                          <SelectItem key={customer.id} value={customer.id}>
-                            {customer.name}
+                        {customers.map((c) => (
+                          <SelectItem key={c.id} value={c.id.toString()}>
+                            {c.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    {/* <Label htmlFor="registrationNumber">Registration Number *</Label> */}
+                  <div>
+                    <Label>Registration Number *</Label>
                     <Input
-                      id="registrationNumber"
-                      value={formData.registrationNumber}
-                      onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value.toUpperCase() })}
-                      placeholder="ABC-1234"
+                      value={formData.vehicle_no}
+                      onChange={(e) => setFormData({ ...formData, vehicle_no: e.target.value.toUpperCase() })}
                       required
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="make">Make *</Label>
+                    <div>
+                      <Label>Make *</Label>
                       <Input
-                        id="make"
-                        value={formData.make}
-                        onChange={(e) => setFormData({ ...formData, make: e.target.value })}
-                        placeholder="Toyota"
+                        value={formData.brand}
+                        onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
                         required
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="model">Model *</Label>
+                    <div>
+                      <Label>Model *</Label>
                       <Input
-                        id="model"
                         value={formData.model}
                         onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                        placeholder="Corolla"
                         required
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="year">Year *</Label>
+                    <div>
+                      <Label>Year *</Label>
                       <Input
-                        id="year"
                         type="number"
-                        value={formData.year}
-                        onChange={(e) => setFormData({ ...formData, year: Number.parseInt(e.target.value) })}
                         min="1900"
                         max={new Date().getFullYear() + 1}
+                        value={formData.year}
+                        onChange={(e) =>
+                          setFormData({ ...formData, year: parseInt(e.target.value) })
+                        }
                         required
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="color">Color *</Label>
+                    <div>
+                      <Label>Color *</Label>
                       <Input
-                        id="color"
                         value={formData.color}
                         onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                        placeholder="White"
                         required
                       />
                     </div>
@@ -200,16 +251,14 @@ export default function VehiclesPage() {
           </Dialog>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search vehicles by registration, make, or model..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search vehicles..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
         </div>
 
         {filteredVehicles.length === 0 ? (
@@ -217,44 +266,40 @@ export default function VehiclesPage() {
             <CardContent className="flex flex-col items-center justify-center py-12">
               <p className="text-muted-foreground">
                 {searchQuery
-                  ? "No vehicles found matching your search"
-                  : "No vehicles yet. Add your first vehicle to get started."}
+                  ? "No vehicles found"
+                  : "No vehicles yet. Add one to get started."}
               </p>
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredVehicles.map((vehicle) => (
-              <Card key={vehicle.id}>
+            {filteredVehicles.map((v) => (
+              <Card key={v.id}>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Car className="h-5 w-5 text-primary" />
-                      <span className="text-lg">{vehicle.registrationNumber}</span>
+                      <span>{v.vehicle_no}</span>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="icon" variant="ghost" onClick={() => handleEdit(vehicle)}>
+                      <Button size="icon" variant="ghost" onClick={() => handleEdit(v)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" onClick={() => handleDelete(vehicle.id)}>
+                      <Button size="icon" variant="ghost" onClick={() => handleDelete(v.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <p className="text-sm font-medium">
-                      {vehicle.make} {vehicle.model}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Year: {vehicle.year}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{vehicle.color}</Badge>
-                  </div>
-                  <div className="pt-2 border-t">
-                    <p className="text-sm text-muted-foreground">Owner: {getCustomerName(vehicle.customerId)}</p>
-                  </div>
+                <CardContent>
+                  <p className="font-medium">
+                    {v.brand} {v.model}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Year: {v.year}</p>
+                  <Badge variant="secondary">{v.color}</Badge>
+                  <p className="text-sm text-muted-foreground mt-2 border-t pt-2">
+                    Owner: {getCustomerName(v.customer_id)}
+                  </p>
                 </CardContent>
               </Card>
             ))}

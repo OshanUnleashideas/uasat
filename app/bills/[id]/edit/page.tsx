@@ -1,275 +1,146 @@
 "use client"
 
-import type React from "react"
-
+import { useEffect, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { AppLayout } from "@/components/app-layout"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useStore, type QuotationItem } from "@/lib/store"
-import { Plus, Trash2, ArrowLeft } from "lucide-react"
-import { useState, useEffect } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ArrowLeft, Save, Plus, Trash2 } from "lucide-react"
 import Link from "next/link"
 
 export default function EditBillPage() {
   const params = useParams()
   const router = useRouter()
-  const { bills, customers, vehicles, updateBill } = useStore()
-  const bill = bills.find((b) => b.id === params.id)
-
+  const [loading, setLoading] = useState(true)
+  
+  // Form State
+  const [billNo, setBillNo] = useState("")
   const [customerId, setCustomerId] = useState("")
   const [vehicleId, setVehicleId] = useState("")
-  const [dueDate, setDueDate] = useState("")
+  const [billDate, setBillDate] = useState("")
+  const [items, setItems] = useState<any[]>([])
   const [taxRate, setTaxRate] = useState(0)
-  const [items, setItems] = useState<QuotationItem[]>([])
+  const [paid, setPaid] = useState(0)
 
   useEffect(() => {
-    if (bill) {
-      setCustomerId(bill.customerId)
-      setVehicleId(bill.vehicleId)
-      setDueDate(bill.dueDate.split("T")[0])
-      setTaxRate(bill.subtotal > 0 ? (bill.tax / bill.subtotal) * 100 : 0)
-      setItems(bill.items)
+    const fetchBill = async () => {
+      const res = await fetch(`/api/bills/${params.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setBillNo(data.bill_no)
+        setCustomerId(data.customerId.toString())
+        setVehicleId(data.vehicleId.toString())
+        setBillDate(new Date(data.bill_date).toISOString().split('T')[0])
+        setItems(data.items.map((i: any) => ({ ...i, tempId: crypto.randomUUID() })))
+        setPaid(Number(data.paid_amount))
+        // Calculate tax rate based on subtotal/vat ratio
+        setTaxRate(data.subtotal > 0 ? (Number(data.vat) / Number(data.subtotal)) * 100 : 0)
+      }
+      setLoading(false)
     }
-  }, [bill])
+    fetchBill()
+  }, [params.id])
 
-  if (!bill) {
-    return (
-      <AppLayout>
-        <div className="flex flex-col items-center justify-center py-12">
-          <p className="text-muted-foreground">Bill not found</p>
-        </div>
-      </AppLayout>
-    )
-  }
-
-  const customerVehicles = vehicles.filter((v) => v.customerId === customerId)
-
-  const addItem = () => {
-    setItems([...items, { id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }])
-  }
-
-  const removeItem = (id: string) => {
-    if (items.length > 1) {
-      setItems(items.filter((item) => item.id !== id))
-    }
-  }
-
-  const updateItem = (id: string, field: keyof QuotationItem, value: string | number) => {
-    setItems(
-      items.map((item) => {
-        if (item.id === id) {
-          const updated = { ...item, [field]: value }
-          if (field === "quantity" || field === "unitPrice") {
-            updated.total = updated.quantity * updated.unitPrice
-          }
-          return updated
+  const updateItem = (tempId: string, field: string, value: any) => {
+    setItems(items.map(item => {
+      if (item.tempId === tempId) {
+        const updated = { ...item, [field]: value }
+        if (field === "quantity" || field === "unitPrice") {
+          updated.total = Number(updated.quantity) * Number(updated.unitPrice)
         }
-        return item
-      }),
-    )
+        return updated
+      }
+      return item
+    }))
   }
 
-  const subtotal = items.reduce((sum, item) => sum + item.total, 0)
-  const tax = subtotal * (taxRate / 100)
-  const total = subtotal + tax
-  const balance = total - bill.paid
+  const subtotal = items.reduce((sum, item) => sum + Number(item.total), 0)
+  const vat = subtotal * (taxRate / 100)
+  const total = subtotal + vat
+  const balance = total - paid
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    const status = balance === 0 ? "paid" : bill.paid > 0 ? "partial" : "unpaid"
-
-    updateBill(bill.id, {
-      customerId,
-      vehicleId,
-      items,
-      subtotal,
-      tax,
-      total,
-      balance,
-      status,
-      dueDate,
+  const handleSave = async () => {
+    const res = await fetch(`/api/bills/${params.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customerId: parseInt(customerId),
+        vehicleId: parseInt(vehicleId),
+        bill_date: billDate,
+        subtotal,
+        vat,
+        total_amount: total,
+        paid_amount: paid,
+        balance_amount: balance,
+        payment_status: balance <= 0 ? "Paid" : paid > 0 ? "Pending" : "Unpaid",
+        items: items.map(({ description, quantity, unitPrice, total }) => ({
+          description, quantity, unitPrice, total
+        }))
+      })
     })
-    router.push(`/bills/${bill.id}`)
+
+    if (res.ok) {
+      router.push(`/bills/${params.id}`)
+    } else {
+      alert("Failed to update bill")
+    }
   }
+
+  if (loading) return <AppLayout><div>Loading...</div></AppLayout>
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Link href={`/bills/${bill.id}`}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Edit Bill</h1>
-            <p className="text-muted-foreground">{bill.billNumber}</p>
+      <div className="space-y-6 max-w-5xl mx-auto">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href={`/bills/${params.id}`}><Button variant="ghost" size="icon"><ArrowLeft /></Button></Link>
+            <h1 className="text-2xl font-bold">Edit Bill: {billNo}</h1>
           </div>
+          <Button onClick={handleSave}><Save className="mr-2 h-4 w-4" /> Save Changes</Button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Customer & Vehicle Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="customer">Customer *</Label>
-                  <Select value={customerId} onValueChange={setCustomerId} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customers.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id}>
-                          {customer.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="vehicle">Vehicle *</Label>
-                  <Select value={vehicleId} onValueChange={setVehicleId} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select vehicle" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customerVehicles.map((vehicle) => (
-                        <SelectItem key={vehicle.id} value={vehicle.id}>
-                          {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dueDate">Due Date *</Label>
-                  <Input
-                    id="dueDate"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    required
-                  />
-                </div>
+        <Card>
+          <CardHeader><CardTitle>Bill Details</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Bill Date</Label>
+                <Input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="taxRate">Tax Rate (%)</Label>
-                <Input
-                  id="taxRate"
-                  type="number"
-                  value={taxRate}
-                  onChange={(e) => setTaxRate(Number.parseFloat(e.target.value) || 0)}
-                  min="0"
-                  step="0.01"
-                />
+                <Label>Tax Rate (%)</Label>
+                <Input type="number" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} />
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Items</CardTitle>
-                <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Item
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            <div className="space-y-4 border-t pt-4">
+              <Label className="text-lg font-bold">Items</Label>
               {items.map((item) => (
-                <div key={item.id} className="flex gap-4 items-start border-b pb-4 last:border-0">
-                  <div className="flex-1 grid gap-4 md:grid-cols-4">
-                    <div className="md:col-span-2 space-y-2">
-                      <Label>Description *</Label>
-                      <Input
-                        value={item.description}
-                        onChange={(e) => updateItem(item.id, "description", e.target.value)}
-                        placeholder="Service or part description"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Quantity *</Label>
-                      <Input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)}
-                        min="0"
-                        step="0.01"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Unit Price (Rs.) *</Label>
-                      <Input
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={(e) => updateItem(item.id, "unitPrice", Number.parseFloat(e.target.value) || 0)}
-                        min="0"
-                        step="0.01"
-                        required
-                      />
-                    </div>
+                <div key={item.tempId} className="flex gap-2 items-end border-b pb-4">
+                  <div className="flex-1">
+                    <Label>Description</Label>
+                    <Input value={item.description} onChange={(e) => updateItem(item.tempId, "description", e.target.value)} />
                   </div>
-                  <div className="flex flex-col gap-2 pt-8">
-                    <p className="text-sm font-medium">Rs. {item.total.toLocaleString()}</p>
-                    {items.length > 1 && (
-                      <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(item.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
+                  <div className="w-24">
+                    <Label>Qty</Label>
+                    <Input type="number" value={item.quantity} onChange={(e) => updateItem(item.tempId, "quantity", e.target.value)} />
                   </div>
+                  <div className="w-32">
+                    <Label>Price</Label>
+                    <Input type="number" value={item.unitPrice} onChange={(e) => updateItem(item.tempId, "unitPrice", e.target.value)} />
+                  </div>
+                  <div className="w-32 text-right font-bold py-2">
+                    Rs. {Number(item.total).toLocaleString()}
+                  </div>
+                  <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setItems(items.filter(i => i.tempId !== item.tempId))}><Trash2 className="h-4 w-4" /></Button>
                 </div>
               ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal:</span>
-                <span className="font-medium">Rs. {subtotal.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tax ({taxRate}%):</span>
-                <span className="font-medium">Rs. {tax.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold border-t pt-2">
-                <span>Total:</span>
-                <span>Rs. {total.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-sm text-green-600 border-t pt-2">
-                <span>Paid:</span>
-                <span className="font-medium">Rs. {bill.paid.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold text-orange-600">
-                <span>Balance Due:</span>
-                <span>Rs. {balance.toLocaleString()}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex justify-end gap-4">
-            <Link href={`/bills/${bill.id}`}>
-              <Button type="button" variant="outline">
-                Cancel
-              </Button>
-            </Link>
-            <Button type="submit">Update Bill</Button>
-          </div>
-        </form>
+              <Button variant="outline" size="sm" onClick={() => setItems([...items, { tempId: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }])}><Plus className="mr-2 h-4 w-4" /> Add Item</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   )

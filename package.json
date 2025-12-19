@@ -1,9 +1,10 @@
 {
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
+  "dev": "next dev",
+  "build": "prisma generate && next build",
+  "start": "next start",
+  "postinstall": "prisma generate"
+},
   "dependencies": {
     "@prisma/adapter-mariadb": "^6.18.0",
     "@prisma/client": "^6.18.0",

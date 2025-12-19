@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { AppLayout } from "@/components/app-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useStore, type QuotationItem } from "@/lib/store"
-import { Plus, Search, Eye, Pencil, Trash2, Receipt } from "lucide-react"
+import { Plus, Search, Eye, Trash2, Receipt, Edit2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
@@ -22,28 +21,37 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { toast } from "react-toastify"
 
-type Bill = {
-  id: string;
-  bill_no: string;
-  customerId: string;
-  vehicleId: string;
-  paid_amount: number;
-  balance_amount: number;
-  total_amount: number;
-  payment_status: string;
-};
+// Aligning with Prisma types
+export type Bill = {
+  id: string
+  bill_no: string
+  customerId: string
+  vehicleId: string
+  quotation_id?: string | null
+  subtotal: number
+  vat: number
+  total_amount: number
+  paid_amount: number
+  balance_amount: number
+  payment_status: "Paid" | "Unpaid" | "Pending"
+  bill_date: string
+}
 
 export default function BillsPage() {
-  const [bills, setBills] = useState<Bill[]>([]);
-  const { customers, vehicles, deleteBill, addBill, addTransaction, quotations } = useStore()
+  const [bills, setBills] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [dbQuotations, setDbQuotations] = useState<any[]>([]); // To ensure quotes load from DB
+  const { deleteBill, addTransaction } = useStore()
   const [searchQuery, setSearchQuery] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   const [customerId, setCustomerId] = useState("")
   const [vehicleId, setVehicleId] = useState("")
-  const [quotationId, setQuotationId] = useState("")
-  const [jobType, setJobType] = useState<"accident-repair" | "normal-painting" | "custom-work">("normal-painting")
+  const [quotationId, setQuotationId] = useState<string>('')
+  const [jobType, setJobType] = useState<string>("normal-painting")
   const [remarks, setRemarks] = useState("")
   const [dueDate, setDueDate] = useState(new Date().toISOString().split("T")[0])
   const [taxRate, setTaxRate] = useState(0)
@@ -54,92 +62,134 @@ export default function BillsPage() {
 
   useEffect(() => {
     fetchBills();
+    fetchCustomer();
+    fetchVehicles();
+    fetchQuotations(); // Fetch quotations explicitly
   }, []);
 
+  // useEffect(() => {
+  //   setQuotationId('')
+  // }, [customerId])
+
+  // 1. Add this useEffect to watch the customerId
+  useEffect(() => {
+    // When the customer changes, we must clear the specific data 
+    // tied to the PREVIOUS customer.
+    setQuotationId('');
+    setVehicleId('');
+
+    // Reset items to a single empty row
+    setItems([
+      { id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }
+    ]);
+
+    // Reset financials
+    setPaid(0);
+    setTaxRate(0);
+
+  }, [customerId]); // This trigger runs every time customerId changes
+
   const fetchBills = async () => {
-    const res = await fetch("api/bills");
-    if (!res.ok) {
-      console.error("Failed to fetch bills");
-      return;
-    }
-    const data = await res.json();
-    console.log("Fetched bills:", data);
-    setBills(data);
+    const res = await fetch("/api/bills");
+    if (res.ok) setBills(await res.json());
   }
 
+  const fetchCustomer = async () => {
+    const res = await fetch("/api/customers");
+    if (res.ok) setCustomers(await res.json());
+  }
+
+  const fetchVehicles = async () => {
+    const res = await fetch("/api/vehicles");
+    if (res.ok) setVehicles(await res.json());
+  };
+
+  const fetchQuotations = async () => {
+    const res = await fetch("/api/quotations");
+    if (res.ok) setDbQuotations(await res.json());
+  };
+
   const filteredBills = bills.filter((bill) => {
-    const bNumMatch = bill.bill_no.toLowerCase().includes(searchQuery.toLowerCase());
+    const bNumMatch = bill.bill_no?.toLowerCase().includes(searchQuery.toLowerCase());
     const customer = customers.find((c) => String(c.id) === String(bill.customerId));
     const customerName = customer?.name ?? "";
     const custMatch = customerName.toLowerCase().includes(searchQuery.toLowerCase());
     return bNumMatch || custMatch;
-  }
-  )
+  })
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this bill?")) {
-      deleteBill(id)
-    }
-  }
+  const getCustomerName = (cId: any) => {
+    return customers.find((c) => String(c.id) === String(cId))?.name || "Unknown"
+  };
 
-  const getCustomerName = (customerId: string) => {
-    return customers.find((c) => c.id === customerId)?.name || "Unknown"
-  }
-
-  const getVehicleInfo = (vehicleId: string) => {
-    const vehicle = vehicles.find((v) => v.id === vehicleId)
-    return vehicle ? `${vehicle.registrationNumber} - ${vehicle.make} ${vehicle.model}` : "Unknown"
+  const getVehicleInfo = (vId: any) => {
+    const vehicle = vehicles.find((v) => String(v.id) === String(vId));
+    return vehicle ? `${vehicle.vehicle_no} - ${vehicle.brand ?? ""} ${vehicle.model ?? ""}` : "Unknown";
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "default"
-      case "partial":
-        return "secondary"
-      case "unpaid":
-        return "destructive"
-      default:
-        return "secondary"
+    switch (status?.toLowerCase()) {
+      case "paid": return "default"
+      case "unpaid": return "destructive"
+      default: return "secondary"
     }
   }
 
-  const customerVehicles = vehicles.filter((v) => v.customerId === customerId)
-  const acceptedQuotations = quotations.filter((q) => q.customerId === customerId && q.status === "accepted")
+  const customerVehicles = vehicles.filter(
+    (v) => String(v.customer_id) === String(customerId)
+  )
 
-  // const loadFromQuotation = (qId: string) => {
-  //   const quotation = quotations.find((q) => q.id === qId)
-  //   if (quotation) {
-  //     setVehicleId(quotation.vehicleId)
-  //     setItems(quotation.items)
-  //     setTaxRate(quotation.subtotal > 0 ? (quotation.tax / quotation.subtotal) * 100 : 0)
-  //     setJobType(quotation.jobType)
-  //   }
-  // }
+  // Logic Fix: Filter approved quotations correctly
+  const acceptedQuotations = dbQuotations.filter(
+    (q) => String(q.customerId) === String(customerId) &&
+      (q.status?.toLowerCase() === "accepted" || q.status?.toLowerCase() === "approved")
+  )
+
+  const loadFromQuotation = (qId: string) => {
+    const quotation = dbQuotations.find((q) => String(q.id) === String(qId))
+
+    if (!quotation) return
+
+    setVehicleId(String(quotation.vehicleId))
+
+    // Fix: Check if items exist before mapping. If undefined, use empty array [].
+    const safeItems = quotation.items || []
+
+    setItems(
+      safeItems.map((item: any) => ({
+        id: crypto.randomUUID(),
+        description: item.description || "",
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        total: Number(item.total) || 0,
+      }))
+    )
+
+    setTaxRate(Number(quotation.taxRate) || 0)
+    // Ensure jobType matches your Select component's values
+    if (quotation.jobType) {
+      setJobType(quotation.jobType.toLowerCase().replace(/\s+/g, '-'))
+    }
+  }
 
   const addItem = () => {
     setItems([...items, { id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }])
   }
 
   const removeItem = (id: string) => {
-    if (items.length > 1) {
-      setItems(items.filter((item) => item.id !== id))
-    }
+    if (items.length > 1) setItems(items.filter((item) => item.id !== id))
   }
 
   const updateItem = (id: string, field: keyof QuotationItem, value: string | number) => {
-    setItems(
-      items.map((item) => {
-        if (item.id === id) {
-          const updated = { ...item, [field]: value }
-          if (field === "quantity" || field === "unitPrice") {
-            updated.total = updated.quantity * updated.unitPrice
-          }
-          return updated
+    setItems(items.map((item) => {
+      if (item.id === id) {
+        const updated = { ...item, [field]: value }
+        if (field === "quantity" || field === "unitPrice") {
+          updated.total = Number(updated.quantity) * Number(updated.unitPrice)
         }
-        return item
-      }),
-    )
+        return updated
+      }
+      return item
+    }))
   }
 
   const subtotal = items.reduce((sum, item) => sum + item.total, 0)
@@ -147,57 +197,91 @@ export default function BillsPage() {
   const total = subtotal + tax
   const balance = total - paid
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  // 1. Ensure 'async' is present before (e: React.FormEvent)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
     if (!customerId || !vehicleId || items.length === 0) {
-      alert("Please fill in all required fields")
-      return
+      toast.info("Please fill in all required fields")
+      // alert("Please fill in all required fields");
+      return;
     }
 
-    const status = balance === 0 ? "paid" : paid > 0 ? "partial" : "unpaid"
+    const status = balance <= 0 ? "Paid" : paid > 0 ? "Pending" : "Unpaid";
 
     const newBill = {
-      customerId,
-      vehicleId,
-      quotationId: quotationId || undefined,
-      items,
+      customerId: parseInt(customerId),
+      vehicleId: parseInt(vehicleId),
+      quotation_id: quotationId ? parseInt(quotationId) : null,
       subtotal,
-      tax,
-      total,
-      paid,
-      balance,
-      status,
-      jobType,
-      remarks,
-      dueDate,
+      vat: tax,
+      total_amount: total,
+      paid_amount: paid,
+      balance_amount: balance,
+      payment_status: status,
+      bill_date: new Date().toISOString(),
+      items: items.map(({ description, quantity, unitPrice, total }) => ({
+        description,
+        quantity: Number(quantity),
+        unitPrice: Number(unitPrice),
+        total: Number(total),
+      })),
+    };
+
+    try {
+      const res = await fetch("/api/bills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newBill),
+      });
+
+      if (res.ok) {
+        toast.success("Bill create successfully")
+        setIsDialogOpen(false);
+        fetchBills();
+        fetchQuotations();
+        // Reset form
+        setCustomerId("");
+        setVehicleId("");
+        setQuotationId("");
+        setPaid(0);
+        setItems([{ id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }]);
+      }
+    } catch (error) {
+      toast.error("Failed to create bill")
+      console.error("Submission failed:", error);
+    }
+  }; // 2. Ensure this closing brace is present before the main 'return' of the component
+
+
+  const handleDelete = async (id: string) => {
+    // 1. Ask for confirmation
+    if (!confirm("Are you sure you want to delete this bill? This action cannot be undone.")) {
+      return;
     }
 
-    // addBill(newBill);
+    try {
+      const res = await fetch(`/api/bills/${id}`, {
+        method: "DELETE",
+      });
 
-    // Add income transaction if payment received
-    if (paid > 0) {
-      addTransaction({
-        type: "income",
-        category: "Service Payment",
-        amount: paid,
-        description: `Payment received for bill`,
-        date: new Date().toISOString(),
-      })
+      if (res.ok) {
+        // 2. Refresh the list after successful deletion
+        fetchBills();
+        toast.success("Bill deleted successfully")
+        // alert("Bill deleted successfully");
+      } else {
+        const errorData = await res.json();
+        toast.error(`Error: ${errorData.error}`)
+        // alert(`Error: ${errorData.error}`);
+      }
+    } catch (error) {
+      // console.error("Delete request failed:", error);
+      toast.error("Could not connect to the server to delete the bill.")
+      // alert("Could not connect to the server to delete the bill.");
     }
+  };
 
-    // Reset form and close dialog
-    setCustomerId("")
-    setVehicleId("")
-    setQuotationId("")
-    setJobType("normal-painting")
-    setRemarks("")
-    setDueDate(new Date().toISOString().split("T")[0])
-    setTaxRate(0)
-    setPaid(0)
-    setItems([{ id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }])
-    setIsDialogOpen(false)
-  }
 
   return (
     <AppLayout>
@@ -214,51 +298,45 @@ export default function BillsPage() {
                 New Bill
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-5xl min-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="w-full md:min-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New Bill</DialogTitle>
                 <DialogDescription>Generate a professional invoice for your customer</DialogDescription>
               </DialogHeader>
 
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Customer & Vehicle Information */}
                 <div className="space-y-4">
                   <h3 className="font-semibold">Customer & Vehicle Information</h3>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="customer">Customer *</Label>
                       <Select value={customerId} onValueChange={setCustomerId} required>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select customer" />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                         <SelectContent>
-                          {customers.map((customer) => (
-                            <SelectItem key={customer.id} value={customer.id}>
-                              {customer.name}
-                            </SelectItem>
+                          {customers.map((c) => (
+                            <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="quotation">Load from Quotation (Optional)</Label>
+                      <Label htmlFor="quotation">Approved Quotation (Optional)</Label>
                       <Select
                         value={quotationId}
-                        onValueChange={(value) => {
-                          setQuotationId(value)
-                          // loadFromQuotation(value)
-                        }}
+                        onValueChange={(value) => { setQuotationId(value); loadFromQuotation(value); }}
                         disabled={!customerId}
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select quotation" />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select quotation" /></SelectTrigger>
                         <SelectContent>
-                          {acceptedQuotations.map((quotation) => (
-                            <SelectItem key={quotation.id} value={quotation.id}>
-                              {quotation.quotationNumber} - Rs. {quotation.total.toLocaleString()}
-                            </SelectItem>
-                          ))}
+                          {acceptedQuotations.length === 0 ? (
+                            <div className="p-3 text-sm text-muted-foreground">No accepted quotations found</div>
+                          ) : (
+                            acceptedQuotations.map((q) => (
+                              <SelectItem key={q.id} value={String(q.id)}>
+                                {q.quotationNumber} - Rs. {Number(q.total).toLocaleString()}
+                              </SelectItem>
+                            ))
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -267,34 +345,22 @@ export default function BillsPage() {
                     <div className="space-y-2">
                       <Label htmlFor="vehicle">Vehicle *</Label>
                       <Select value={vehicleId} onValueChange={setVehicleId} required disabled={!customerId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select vehicle" />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
                         <SelectContent>
-                          {customerVehicles.map((vehicle) => (
-                            <SelectItem key={vehicle.id} value={vehicle.id}>
-                              {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
-                            </SelectItem>
+                          {customerVehicles.map((v) => (
+                            <SelectItem key={v.id} value={String(v.id)}>{v.vehicle_no} - {v.brand} {v.model}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="dueDate">Due Date *</Label>
-                      <Input
-                        id="dueDate"
-                        type="date"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                        required
-                      />
+                      <Input id="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="jobType">Job Type *</Label>
                       <Select value={jobType} onValueChange={(value: any) => setJobType(value)}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="accident-repair">Accident Repair</SelectItem>
                           <SelectItem value="normal-painting">Normal Painting</SelectItem>
@@ -305,14 +371,10 @@ export default function BillsPage() {
                   </div>
                 </div>
 
-                {/* Items & Services */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold">Items & Services</h3>
-                    <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Item
-                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={addItem}><Plus className="mr-2 h-4 w-4" />Add Item</Button>
                   </div>
                   <div className="space-y-3 max-h-48 overflow-y-auto">
                     {items.map((item) => (
@@ -320,51 +382,21 @@ export default function BillsPage() {
                         <div className="flex-1 grid gap-2 md:grid-cols-4">
                           <div className="md:col-span-2 space-y-1">
                             <Label className="text-xs">Description *</Label>
-                            <Input
-                              value={item.description}
-                              onChange={(e) => updateItem(item.id, "description", e.target.value)}
-                              placeholder="Service or part"
-                              className="text-sm"
-                              required
-                            />
+                            <Input value={item.description} onChange={(e) => updateItem(item.id, "description", e.target.value)} required />
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">Qty *</Label>
-                            <Input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => updateItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)}
-                              min="0"
-                              step="0.01"
-                              className="text-sm"
-                              required
-                            />
+                            <Input type="number" value={item.quantity} onChange={(e) => updateItem(item.id, "quantity", parseFloat(e.target.value) || 0)} required />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Unit Price (Rs.) *</Label>
-                            <Input
-                              type="number"
-                              value={item.unitPrice}
-                              onChange={(e) => updateItem(item.id, "unitPrice", Number.parseFloat(e.target.value) || 0)}
-                              min="0"
-                              step="0.01"
-                              className="text-sm"
-                              required
-                            />
+                            <Label className="text-xs">Unit Price *</Label>
+                            <Input type="number" value={item.unitPrice} onChange={(e) => updateItem(item.id, "unitPrice", parseFloat(e.target.value) || 0)} required />
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 pt-6">
                           <p className="text-xs font-medium">Rs. {item.total.toLocaleString()}</p>
                           {items.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeItem(item.id)}
-                              className="h-6 w-6 p-0"
-                            >
-                              ✕
-                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(item.id)} className="h-6 w-6 p-0">✕</Button>
                           )}
                         </div>
                       </div>
@@ -372,70 +404,27 @@ export default function BillsPage() {
                   </div>
                 </div>
 
-                {/* Charges & Payment */}
                 <div className="space-y-4">
                   <h3 className="font-semibold">Charges & Payment</h3>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="taxRate">Service Charge / VAT (%)</Label>
-                      <Input
-                        id="taxRate"
-                        type="number"
-                        value={taxRate}
-                        onChange={(e) => setTaxRate(Number.parseFloat(e.target.value) || 0)}
-                        min="0"
-                        step="0.01"
-                      />
+                      <Label>VAT / Tax (%)</Label>
+                      <Input type="number" value={taxRate} onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)} />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="paid">Amount Paid (Rs.)</Label>
-                      <Input
-                        id="paid"
-                        type="number"
-                        value={paid}
-                        onChange={(e) => setPaid(Number.parseFloat(e.target.value) || 0)}
-                        min="0"
-                        max={total}
-                        step="0.01"
-                      />
+                      <Label>Amount Paid (Rs.)</Label>
+                      <Input type="number" value={paid} onChange={(e) => setPaid(parseFloat(e.target.value) || 0)} />
                     </div>
                   </div>
                   <div className="space-y-2 pt-2 border-t">
-                    <div className="flex justify-between text-sm">
-                      <span>Subtotal:</span>
-                      <span className="font-medium">Rs. {subtotal.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span>Service Charge ({taxRate}%):</span>
-                      <span className="font-medium">Rs. {tax.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between font-bold border-t pt-2">
-                      <span>Grand Total:</span>
-                      <span>Rs. {total.toLocaleString()}</span>
-                    </div>
+                    <div className="flex justify-between text-sm"><span>Subtotal:</span><span className="font-medium">Rs. {subtotal.toLocaleString()}</span></div>
+                    <div className="flex justify-between text-sm"><span>Tax ({taxRate}%):</span><span className="font-medium">Rs. {tax.toLocaleString()}</span></div>
+                    <div className="flex justify-between font-bold border-t pt-2"><span>Grand Total:</span><span>Rs. {total.toLocaleString()}</span></div>
                   </div>
                 </div>
 
-                {/* Additional Information */}
-                <div className="space-y-4">
-                  <h3 className="font-semibold">Additional Information</h3>
-                  <div className="space-y-2">
-                    <Label htmlFor="remarks">Remarks (Optional)</Label>
-                    <Textarea
-                      id="remarks"
-                      value={remarks}
-                      onChange={(e) => setRemarks(e.target.value)}
-                      placeholder="Add any additional notes..."
-                      rows={2}
-                    />
-                  </div>
-                </div>
-
-                {/* Form Actions */}
                 <div className="flex justify-end gap-4 pt-4 border-t">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancel
-                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
                   <Button type="submit">Create Bill</Button>
                 </div>
               </form>
@@ -446,26 +435,12 @@ export default function BillsPage() {
         <div className="flex items-center gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search bills by number or customer..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
+            <Input placeholder="Search bills..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
           </div>
         </div>
 
         {filteredBills.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Receipt className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">
-                {searchQuery
-                  ? "No bills found matching your search"
-                  : "No bills yet. Create your first bill to get started."}
-              </p>
-            </CardContent>
-          </Card>
+          <Card><CardContent className="flex flex-col items-center justify-center py-12"><Receipt className="h-12 w-12 text-muted-foreground mb-4" /><p>No bills found</p></CardContent></Card>
         ) : (
           <div className="space-y-4">
             {filteredBills.map((bill) => (
@@ -487,10 +462,14 @@ export default function BillsPage() {
                       </Link>
                       <Link href={`/bills/${bill.id}/edit`}>
                         <Button size="icon" variant="ghost">
-                          <Pencil className="h-4 w-4" />
+                          <Edit2 className="h-4 w-4" />
                         </Button>
                       </Link>
-                      <Button size="icon" variant="ghost" onClick={() => handleDelete(bill.id)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleDelete(bill.id)} // Pass the bill ID here
+                      >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -498,22 +477,10 @@ export default function BillsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4 md:grid-cols-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Vehicle</p>
-                      <p className="text-sm font-medium">{getVehicleInfo(bill.vehicleId)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Amount</p>
-                      <p className="text-sm font-medium">Rs. {bill.total_amount.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Paid</p>
-                      <p className="text-sm font-medium text-green-600">Rs. {bill.paid_amount.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Balance</p>
-                      <p className="text-sm font-medium text-orange-600">Rs. {bill.balance_amount.toLocaleString()}</p>
-                    </div>
+                    <div><p className="text-sm text-muted-foreground">Vehicle</p><p className="text-sm font-medium">{getVehicleInfo(bill.vehicleId)}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Total</p><p className="text-sm font-medium">Rs. {Number(bill.total_amount).toLocaleString()}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Paid</p><p className="text-sm font-medium text-green-600">Rs. {Number(bill.paid_amount).toLocaleString()}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Balance</p><p className="text-sm font-medium text-orange-600">Rs. {Number(bill.balance_amount).toLocaleString()}</p></div>
                   </div>
                 </CardContent>
               </Card>

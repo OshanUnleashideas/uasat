@@ -57,11 +57,11 @@ const menuItems = [
     icon: TrendingUp,
     href: "/finances",
   },
-  {
-    title: "Jobs",
-    icon: Wrench,
-    href: "/jobs",
-  },
+  // {
+  //   title: "Jobs",
+  //   icon: Wrench,
+  //   href: "/jobs",
+  // },
 ]
 
 export function AppSidebar() {
@@ -69,7 +69,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="border-b border-sidebar-border px-6 py-4">
+      <SidebarHeader className="border-b border-sidebar-border px-3 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
             <Car className="h-6 w-6 text-primary-foreground" />

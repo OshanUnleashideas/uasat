@@ -132,13 +132,15 @@ export default function QuotationsPage() {
   const getStatusColor = (status: string) => {
     switch (String(status)) {
       case "Pending":
-        return "secondary";
+        return "bg-secondary text-secondary-foreground";
       case "Approved":
-        return "default";
+        return "bg-primary text-primary-foreground";
       case "Rejected":
-        return "destructive";
+        return "bg-destructive text-destructive-foreground";
+      case "Billed":
+        return "bg-green-600 text-white hover:bg-green-700";
       default:
-        return "secondary";
+        return "bg-secondary text-secondary-foreground";
     }
   };
 
@@ -296,7 +298,9 @@ export default function QuotationsPage() {
                     <div className="space-y-1">
                       <CardTitle className="flex items-center gap-2">
                         {quotation.quotationNumber}
-                        <Badge variant={getStatusColor(quotation.status)}>{quotation.status}</Badge>
+                        <Badge className={getStatusColor(quotation.status)}>
+                          {quotation.status}
+                        </Badge>
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">{getCustomerName(quotation.customerId)}</p>
                     </div>

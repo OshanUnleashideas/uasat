@@ -19,20 +19,24 @@ const prisma = new PrismaClient();
 // };
 
 // GET all quotations
+
 export async function GET() {
   try {
     const quotations = await prisma.quotations.findMany({
+      // You can filter by status here if you only want approved ones
       include: {
+        items: true,    // 👈 THIS IS THE MISSING LINK
         customer: true,
         vehicle: true,
       },
-      orderBy: { id: "desc" },
-    });
-
-    return NextResponse.json(quotations, { status: 200 });
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+    return NextResponse.json(quotations)
   } catch (error) {
-    console.error("GET /quotations error:", error);
-    return NextResponse.json({ error: "Failed to fetch quotations" }, { status: 500 });
+    console.error("Failed to fetch quotations:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 

@@ -64,3 +64,24 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     return NextResponse.json({ error: "Update failed" }, { status: 500 })
   }
 }
+
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const { status } = await request.json();
+
+    const updatedQuotation = await prisma.quotations.update({
+      where: { id: parseInt(id) },
+      data: { status },
+    });
+
+    return NextResponse.json(updatedQuotation);
+  } catch (error) {
+    console.error("Status Update Error:", error);
+    return NextResponse.json({ error: "Failed to update status" }, { status: 500 });
+  }
+}

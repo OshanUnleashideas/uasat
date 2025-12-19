@@ -19,25 +19,6 @@ model customers {
   bills      bills[]
 }
 
-model expenses {
-  id          Int       @id @default(autoincrement())
-  category    String?   @db.VarChar(100)
-  description String?   @db.Text
-  amount      Decimal   @db.Decimal(10, 2)
-  date        DateTime? @default(dbgenerated("(curdate())")) @db.Date
-}
-
-model income {
-  id          Int       @id @default(autoincrement())
-  bill_id     Int?
-  description String?   @db.VarChar(255)
-  amount      Decimal   @db.Decimal(10, 2)
-  date        DateTime? @default(dbgenerated("(curdate())")) @db.Date
-  bills       bills?    @relation(fields: [bill_id], references: [id], onUpdate: NoAction)
-
-  @@index([bill_id], map: "bill_id")
-}
-
 model job_images {
   id         Int              @id @default(autoincrement())
   job_id     Int?
@@ -85,7 +66,6 @@ model bills {
   vehicle    vehicles    @relation(fields: [vehicleId], references: [id])
   quotation  quotations? @relation("QuotationBills", fields: [quotation_id], references: [id], onUpdate: NoAction)
   items      bill_items[]  // ✅ Relation to bill_items
-  income     income[]
 
   @@index([quotation_id], map: "quotation_id")
 }

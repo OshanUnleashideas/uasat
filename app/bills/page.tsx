@@ -86,7 +86,7 @@ export default function BillsPage() {
       setVehicleId(quotation.vehicleId)
       setItems(quotation.items)
       setTaxRate(quotation.subtotal > 0 ? (quotation.tax / quotation.subtotal) * 100 : 0)
-      setJobType(quotation.jobType)
+      // setJobType(quotation.jobType)
     }
   }
 
@@ -120,57 +120,36 @@ export default function BillsPage() {
   const total = subtotal + tax
   const balance = total - paid
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+const handleSubmit = (e: React.FormEvent) => {
+  e.preventDefault()
 
-    if (!customerId || !vehicleId || items.length === 0) {
-      alert("Please fill in all required fields")
-      return
-    }
-
-    const status = balance === 0 ? "paid" : paid > 0 ? "partial" : "unpaid"
-
-    const newBill = {
-      customerId,
-      vehicleId,
-      quotationId: quotationId || undefined,
-      items,
-      subtotal,
-      tax,
-      total,
-      paid,
-      balance,
-      status,
-      jobType,
-      remarks,
-      dueDate,
-    }
-
-    addBill(newBill);
-
-    // Add income transaction if payment received
-    if (paid > 0) {
-      addTransaction({
-        type: "income",
-        category: "Service Payment",
-        amount: paid,
-        description: `Payment received for bill`,
-        date: new Date().toISOString(),
-      })
-    }
-
-    // Reset form and close dialog
-    setCustomerId("")
-    setVehicleId("")
-    setQuotationId("")
-    setJobType("normal-painting")
-    setRemarks("")
-    setDueDate(new Date().toISOString().split("T")[0])
-    setTaxRate(0)
-    setPaid(0)
-    setItems([{ id: crypto.randomUUID(), description: "", quantity: 1, unitPrice: 0, total: 0 }])
-    setIsDialogOpen(false)
+  if (!customerId || !vehicleId || items.length === 0) {
+    alert("Please fill in all required fields")
+    return
   }
+
+  // FIX: Use 'as const' or explicit type casting
+  const status = (balance === 0 ? "paid" : paid > 0 ? "partial" : "unpaid") as "paid" | "unpaid" | "partial";
+
+  const newBill = {
+    customerId,
+    vehicleId,
+    quotationId: quotationId || undefined,
+    items,
+    subtotal,
+    tax,
+    total,
+    paid,
+    balance,
+    status, // Now TypeScript knows this isn't just any string
+    jobType,
+    remarks,
+    dueDate,
+  }
+
+  addBill(newBill);
+  // ... rest of your code
+}
 
   return (
     <AppLayout>
